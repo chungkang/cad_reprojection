@@ -2,15 +2,15 @@ import ezdxf
 from pyproj import Transformer
 
 # 입력 및 출력 좌표계 정의 (EPSG 코드 사용)
-input_crs = "EPSG:5174"
-output_crs = "EPSG:5187"
+input_crs = "EPSG:5187"
+output_crs = "EPSG:5174"
 
 # 좌표 변환기 설정
 transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
 
 # DXF 파일 열기
-input_dxf = "sample01_EPSG5174.dxf"
-output_dxf = "out_sample01_EPSG5187.dxf"
+input_dxf = "sample/sample02_EPSG5187.dxf"
+output_dxf = "out_sample02_EPSG5174.dxf"
 doc = ezdxf.readfile(input_dxf)
 msp = doc.modelspace()
 
