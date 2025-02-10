@@ -1,79 +1,107 @@
 import ezdxf
 from pyproj import Transformer
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
-# 입력 및 출력 좌표계 정의 (EPSG 코드 사용)
-input_crs = "EPSG:5187"
-output_crs = "EPSG:5174"
+def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
+    """DXF 파일의 좌표계를 변환하는 함수"""
+    try:
+        transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
+        doc = ezdxf.readfile(input_dxf)
+        msp = doc.modelspace()
 
-# 좌표 변환기 설정
-transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
+        def transform_entity(entity):
+            if entity.dxftype() == "LINE":
+                x1, y1 = transformer.transform(entity.dxf.start.x, entity.dxf.start.y)
+                x2, y2 = transformer.transform(entity.dxf.end.x, entity.dxf.end.y)
+                entity.dxf.start = (x1, y1)
+                entity.dxf.end = (x2, y2)
 
-# DXF 파일 열기
-input_dxf = "sample/sample02_EPSG5187.dxf"
-output_dxf = "out_sample02_EPSG5174.dxf"
-doc = ezdxf.readfile(input_dxf)
-msp = doc.modelspace()
+            elif entity.dxftype() == "LWPOLYLINE":
+                points = [(transformer.transform(p[0], p[1])[0], transformer.transform(p[0], p[1])[1], *p[2:]) for p in list(entity.get_points())]
+                entity.set_points(points)
 
-# DXF 엔티티 순회 및 좌표 변환
-def transform_entity(entity):
-    """ 엔티티의 좌표를 변환하는 함수 """
+            elif entity.dxftype() == "POLYLINE":
+                for vertex in list(entity.vertices()):
+                    x, y = transformer.transform(vertex.dxf.location.x, vertex.dxf.location.y)
+                    vertex.dxf.location = (x, y)
+
+            elif entity.dxftype() in ["CIRCLE", "ARC"]:
+                x, y = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
+                entity.dxf.center = (x, y)
+
+            elif entity.dxftype() == "INSERT":
+                x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
+                entity.dxf.insert = (x, y)
+
+            elif entity.dxftype() in ["TEXT", "MTEXT"]:
+                x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
+                entity.dxf.insert = (x, y)
+
+        for entity in msp:
+            transform_entity(entity)
+
+        doc.saveas(output_dxf)
+        messagebox.showinfo("완료", f"변환된 DXF 저장 완료: {output_dxf}")
+    except Exception as e:
+        messagebox.showerror("오류", str(e))
+
+
+def select_input_dxf():
+    filename = filedialog.askopenfilename(filetypes=[("DXF Files", "*.dxf")])
+    if filename:  # 파일이 선택된 경우에만
+        input_dxf_entry.delete(0, tk.END)
+        input_dxf_entry.insert(0, filename)
+
+
+def select_output_dxf():
+    filename = filedialog.asksaveasfilename(defaultextension=".dxf", filetypes=[("DXF Files", "*.dxf")])
+    if filename:  # 파일이 선택된 경우에만
+        output_dxf_entry.delete(0, tk.END)
+        output_dxf_entry.insert(0, filename)
+
+
+def start_conversion():
+    input_dxf = input_dxf_entry.get()
+    output_dxf = output_dxf_entry.get()
+    input_crs = input_crs_entry.get()
+    output_crs = output_crs_entry.get()
     
-    if entity.dxftype() == "LINE":
-        # LINE의 시작점과 끝점 변환
-        x1, y1 = transformer.transform(entity.dxf.start.x, entity.dxf.start.y)
-        x2, y2 = transformer.transform(entity.dxf.end.x, entity.dxf.end.y)
-        print(f"LINE 변환: ({entity.dxf.start.x}, {entity.dxf.start.y}) -> ({x1}, {y1})")
-        print(f"LINE 변환: ({entity.dxf.end.x}, {entity.dxf.end.y}) -> ({x2}, {y2})")
-        entity.dxf.start = (x1, y1)
-        entity.dxf.end = (x2, y2)
+    if not input_dxf or not output_dxf or not input_crs or not output_crs:
+        messagebox.showerror("오류", "모든 항목을 입력해야 합니다.")
+        return
+    
+    transform_dxf(input_dxf, output_dxf, input_crs, output_crs)
 
-    elif entity.dxftype() == "LWPOLYLINE":
-        # LWPOLYLINE의 점 목록 변환 (bulge 값 포함 처리)
-        points = []
-        with entity.points() as point_iter:
-            for p in point_iter:
-                # p[0]과 p[1]은 좌표, p[2:]는 나머지 bulge 값
-                new_point = (transformer.transform(p[0], p[1])[0], 
-                            transformer.transform(p[0], p[1])[1], *p[2:])
-                points.append(new_point)
-        print(f"LWPOLYLINE 변환: {points}")
-        entity.set_points(points)
+# GUI 생성
+root = tk.Tk()
+root.title("DXF 좌표 변환기")
+root.geometry("500x220")
 
-    elif entity.dxftype() == "POLYLINE":
-        # POLYLINE의 점 변환 (vertex를 하나씩 변환)
-        for vertex in entity.vertices:
-            x, y = transformer.transform(vertex.dxf.location.x, vertex.dxf.location.y)
-            print(f"POLYLINE vertex 변환: ({vertex.dxf.location.x}, {vertex.dxf.location.y}) -> ({x}, {y})")
-            vertex.dxf.location = (x, y)
+frame = tk.Frame(root)
+frame.pack(pady=10)
 
-    elif entity.dxftype() in ["CIRCLE", "ARC"]:
-        # CIRCLE, ARC의 중심점 변환
-        x, y = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
-        print(f"CIRCLE/ARC 변환: ({entity.dxf.center.x}, {entity.dxf.center.y}) -> ({x}, {y})")
-        entity.dxf.center = (x, y)
+tk.Label(frame, text="입력좌표계(예시: EPSG:5186):").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+input_crs_entry = tk.Entry(frame, width=30)
+input_crs_entry.grid(row=0, column=1, padx=5, pady=2)
 
-    elif entity.dxftype() == "INSERT":
-        # 블록(INSERT)의 인서트 포인트 변환
-        x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
-        print(f"INSERT 변환: ({entity.dxf.insert.x}, {entity.dxf.insert.y}) -> ({x}, {y})")
-        entity.dxf.insert = (x, y)
+tk.Label(frame, text="출력좌표계(예시: EPSG:5174):").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+output_crs_entry = tk.Entry(frame, width=30)
+output_crs_entry.grid(row=1, column=1, padx=5, pady=2)
 
-    elif entity.dxftype() == "TEXT":
-        # TEXT의 인서트 포인트 변환
-        x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
-        print(f"TEXT 변환: ({entity.dxf.insert.x}, {entity.dxf.insert.y}) -> ({x}, {y})")
-        entity.dxf.insert = (x, y)
+tk.Label(frame, text="입력 DXF 파일:").grid(row=2, column=0, sticky="e", padx=5, pady=2)
+input_dxf_entry = tk.Entry(frame, width=30)
+input_dxf_entry.grid(row=2, column=1, padx=5, pady=2)
+tk.Button(frame, text="찾기", command=select_input_dxf).grid(row=2, column=2, padx=5, pady=2)
 
-    elif entity.dxftype() == "MTEXT":
-        # MTEXT의 인서트 포인트 변환
-        x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
-        print(f"MTEXT 변환: ({entity.dxf.insert.x}, {entity.dxf.insert.y}) -> ({x}, {y})")
-        entity.dxf.insert = (x, y)
+tk.Label(frame, text="출력 DXF 파일:").grid(row=3, column=0, sticky="e", padx=5, pady=2)
+output_dxf_entry = tk.Entry(frame, width=30)
+output_dxf_entry.grid(row=3, column=1, padx=5, pady=2)
+tk.Button(frame, text="저장위치", command=select_output_dxf).grid(row=3, column=2, padx=5, pady=2)
 
-# 모델 공간의 모든 엔티티 변환
-for entity in msp:
-    transform_entity(entity)
+warning_label = tk.Label(root, text="※ GIS 프로그램의 좌표 변환 방식과 차이가 있을 수 있으며,\n   변환 과정에서 ~0.005m 오차가 발생할 수 있습니다.", fg="red")
+warning_label.pack(pady=5)
 
-# 변환된 DXF 저장
-doc.saveas(output_dxf)
-print(f"변환된 DXF 저장 완료: {output_dxf}")
+tk.Button(root, text="변환 실행", command=start_conversion, bg="blue", fg="white").pack(pady=10)
+
+root.mainloop()
