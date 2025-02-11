@@ -2,6 +2,7 @@ import ezdxf
 from pyproj import Transformer
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import math  # math 모듈 추가
 
 def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
     """DXF 파일의 좌표계를 변환하는 함수"""
@@ -29,6 +30,22 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
             elif entity.dxftype() in ["CIRCLE", "ARC"]:
                 x, y = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
                 entity.dxf.center = (x, y)
+                if entity.dxftype() == "ARC":
+                    # ArcEdge 처리: 중심점과 반지름을 변환
+                    center_x, center_y = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
+                    entity.dxf.center = (center_x, center_y)
+                    
+                    # 시작점과 끝점을 계산하여 변환
+                    start_angle = entity.dxf.start_angle
+                    end_angle = entity.dxf.end_angle
+                    radius = entity.dxf.radius
+                    
+                    start_x, start_y = transformer.transform(entity.dxf.center.x + radius * math.cos(start_angle), entity.dxf.center.y + radius * math.sin(start_angle))
+                    end_x, end_y = transformer.transform(entity.dxf.center.x + radius * math.cos(end_angle), entity.dxf.center.y + radius * math.sin(end_angle))
+
+                    # 새로운 점을 적용 (start_point와 end_point를 직접 설정하는 대신 start, end 사용)
+                    entity.dxf.start = (start_x, start_y)
+                    entity.dxf.end = (end_x, end_y)
 
             elif entity.dxftype() == "INSERT":
                 x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
@@ -37,6 +54,45 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
             elif entity.dxftype() in ["TEXT", "MTEXT"]:
                 x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
                 entity.dxf.insert = (x, y)
+
+            elif entity.dxftype() == "POINT":
+                x, y = transformer.transform(entity.dxf.location.x, entity.dxf.location.y)
+                entity.dxf.location = (x, y)
+
+            elif entity.dxftype() == "HATCH":
+                for boundary in entity.paths:
+                    # 각 경로에 대해 점들을 변환
+                    for path in boundary:
+                        if isinstance(path, ezdxf.entities.LineEdge):
+                            # LineEdge 처리
+                            x1, y1 = transformer.transform(path.start.x, path.start.y)
+                            x2, y2 = transformer.transform(path.end.x, path.end.y)
+                            path.start = (x1, y1)
+                            path.end = (x2, y2)
+                        elif isinstance(path, ezdxf.entities.ArcEdge):
+                            # ArcEdge 처리 (호의 좌표 변환)
+                            center_x, center_y = transformer.transform(path.center.x, path.center.y)
+                            start_angle = path.start_angle
+                            end_angle = path.end_angle
+                            radius = path.radius
+                            
+                            start_x, start_y = transformer.transform(path.center.x + radius * math.cos(start_angle), path.center.y + radius * math.sin(start_angle))
+                            end_x, end_y = transformer.transform(path.center.x + radius * math.cos(end_angle), path.center.y + radius * math.sin(end_angle))
+
+                            # start_point와 end_point를 직접 설정하지 않고 start와 end 속성을 수정
+                            path.start = (start_x, start_y)
+                            path.end = (end_x, end_y)
+                        else:
+                            for vertex in path:
+                                x, y = transformer.transform(vertex[0], vertex[1])
+                                vertex[0] = x
+                                vertex[1] = y
+
+            elif entity.dxftype() == "IMAGE":
+                # 이미지 엔티티의 좌표도 변환 (일반적으로 insert 속성 사용)
+                if hasattr(entity.dxf, "insert"):
+                    x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
+                    entity.dxf.insert = (x, y)
 
         for entity in msp:
             transform_entity(entity)
@@ -77,6 +133,8 @@ def start_conversion():
 root = tk.Tk()
 root.title("DXF 좌표 변환기")
 root.geometry("500x220")
+root.resizable(False, False)
+root.iconbitmap("convert_d_cube_icon_240710.ico")
 
 frame = tk.Frame(root)
 frame.pack(pady=10)
@@ -99,7 +157,7 @@ output_dxf_entry = tk.Entry(frame, width=30)
 output_dxf_entry.grid(row=3, column=1, padx=5, pady=2)
 tk.Button(frame, text="저장위치", command=select_output_dxf).grid(row=3, column=2, padx=5, pady=2)
 
-warning_label = tk.Label(root, text="※ GIS 프로그램의 좌표 변환 방식과 차이가 있을 수 있으며,\n   변환 과정에서 ~0.005m 오차가 발생할 수 있습니다.", fg="red")
+warning_label = tk.Label(root, text="※ GIS 프로그램의 좌표 변환 방식과 차이가 있을 수 있으며,\n   변환 과정에서 오차가 발생할 수 있습니다.", fg="red")
 warning_label.pack(pady=5)
 
 tk.Button(root, text="변환 실행", command=start_conversion, bg="blue", fg="white").pack(pady=10)
