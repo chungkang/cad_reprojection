@@ -55,6 +55,11 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
                 x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
                 entity.dxf.insert = (x, y)
 
+                # align_point (정렬점) 속성이 존재할 경우 변환
+                if entity.dxf.hasattr("align_point"):
+                    ax, ay = transformer.transform(entity.dxf.align_point.x, entity.dxf.align_point.y)
+                    entity.dxf.align_point = (ax, ay)
+
             elif entity.dxftype() == "POINT":
                 x, y = transformer.transform(entity.dxf.location.x, entity.dxf.location.y)
                 entity.dxf.location = (x, y)
