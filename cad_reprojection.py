@@ -139,7 +139,6 @@ root = tk.Tk()
 root.title("DXF 좌표 변환기")
 root.geometry("500x220")
 root.resizable(False, False)
-root.iconbitmap("convert_d_cube_icon_240710.ico")
 
 frame = tk.Frame(root)
 frame.pack(pady=10)
