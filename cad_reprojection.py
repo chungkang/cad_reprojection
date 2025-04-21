@@ -111,7 +111,7 @@ def start_conversion():
 # GUI 생성
 root = tk.Tk()
 root.title("DXF 좌표 변환기")
-root.geometry("500x220")
+root.geometry("500x250")
 root.resizable(False, False)
 
 frame = tk.Frame(root)
@@ -137,6 +137,16 @@ tk.Button(frame, text="저장위치", command=select_output_dxf).grid(row=3, col
 
 warning_label = tk.Label(root, text="※ GIS 프로그램의 좌표 변환 방식과 차이가 있을 수 있으며,\n   변환 과정에서 오차가 발생할 수 있습니다.", fg="red")
 warning_label.pack(pady=5)
+
+info_label = tk.Label(root, text="자세한 사항은 https://github.com/chungkang/cad_reprojection 페이지를 참고하세요.", fg="blue", cursor="hand2")
+info_label.pack()
+
+# 클릭 시 웹 브라우저로 이동하도록 설정
+def open_github(event):
+    import webbrowser
+    webbrowser.open_new("https://github.com/chungkang/cad_reprojection")
+
+info_label.bind("<Button-1>", open_github)
 
 tk.Button(root, text="변환 실행", command=start_conversion, bg="blue", fg="white").pack(pady=10)
 
