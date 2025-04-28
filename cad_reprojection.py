@@ -57,6 +57,21 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
                     ax, ay = transformer.transform(entity.dxf.align_point.x, entity.dxf.align_point.y)
                     entity.dxf.align_point = (ax, ay)
 
+            elif dxftype == "LEADER":
+                new_vertices = []
+                for vertex in entity.vertices:
+                    x, y = transformer.transform(vertex[0], vertex[1])
+                    if len(vertex) == 3:
+                        z = vertex[2]
+                        new_vertices.append((x, y, z))
+                    else:
+                        new_vertices.append((x, y))
+                entity.vertices = new_vertices
+
+            elif dxftype == "IMAGE":
+                x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
+                entity.dxf.insert = (x, y)
+
             # === 단순한 엔티티는 자동 처리 ===
             else:
                 for attr in dir(entity.dxf):
