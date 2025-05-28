@@ -22,13 +22,14 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
 
             elif dxftype == "LWPOLYLINE":
                 points = [
-                    (transformer.transform(p[0], p[1])[0], transformer.transform(p[0], p[1])[1], *p[2:])
-                    for p in list(entity.get_points())
+                    (*transformer.transform(x, y), *point[2:])
+                    for x, y, *point in entity.get_points()
                 ]
                 entity.set_points(points)
 
             elif dxftype == "POLYLINE":
-                for vertex in list(entity.vertices()):
+                vertices = entity.vertices if isinstance(entity.vertices, list) else entity.vertices()
+                for vertex in vertices:
                     x, y = transformer.transform(vertex.dxf.location.x, vertex.dxf.location.y)
                     vertex.dxf.location = (x, y)
 
@@ -58,8 +59,9 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
                     entity.dxf.align_point = (ax, ay)
 
             elif dxftype == "LEADER":
+                vertices = entity.vertices if isinstance(entity.vertices, list) else entity.vertices()
                 new_vertices = []
-                for vertex in entity.vertices:
+                for vertex in vertices:
                     x, y = transformer.transform(vertex[0], vertex[1])
                     if len(vertex) == 3:
                         z = vertex[2]
