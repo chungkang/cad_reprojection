@@ -35,20 +35,24 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
 
             elif dxftype == "HATCH":
                 for path in entity.paths:
-                    for edge in path:
-                        if isinstance(edge, ezdxf.entities.LineEdge):
-                            x1, y1 = transformer.transform(edge.start.x, edge.start.y)
-                            x2, y2 = transformer.transform(edge.end.x, edge.end.y)
-                            edge.start = (x1, y1)
-                            edge.end = (x2, y2)
-                        elif isinstance(edge, ezdxf.entities.ArcEdge):
-                            cx, cy = transformer.transform(edge.center.x, edge.center.y)
-                            edge.center = (cx, cy)
-                        else:
-                            for vertex in edge:
-                                x, y = transformer.transform(vertex[0], vertex[1])
-                                vertex[0] = x
-                                vertex[1] = y
+                    if hasattr(path, "edges"):
+                        # EdgePath 처리
+                        for edge in path.edges:
+                            if isinstance(edge, ezdxf.entities.LineEdge):
+                                x1, y1 = transformer.transform(edge.start.x, edge.start.y)
+                                x2, y2 = transformer.transform(edge.end.x, edge.end.y)
+                                edge.start = (x1, y1)
+                                edge.end = (x2, y2)
+                            elif isinstance(edge, ezdxf.entities.ArcEdge):
+                                cx, cy = transformer.transform(edge.center.x, edge.center.y)
+                                edge.center = (cx, cy)
+                    elif hasattr(path, "vertices"):
+                        # PolylinePath 처리
+                        new_vertices = []
+                        for x, y, *rest in path.vertices:
+                            x_t, y_t = transformer.transform(x, y)
+                            new_vertices.append((x_t, y_t, *rest))
+                        path.vertices = new_vertices
 
             elif dxftype == "MTEXT":
                 if hasattr(entity.dxf, "insert"):
@@ -74,10 +78,24 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
                 x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
                 entity.dxf.insert = (x, y)
 
+            elif dxftype == "ELLIPSE":
+                # 중심 좌표 변환
+                cx, cy = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
+                entity.dxf.center = (cx, cy)
+
+                # 주축 벡터 변환 (벡터는 위치가 아닌 방향 → 회전만 적용해야 하는데 실제로는 길이까지 고려됨)
+                # 단순 좌표 변환이 아닌 상대적 이동량만 적용해야 정확함
+                mx, my = entity.dxf.major_axis.x, entity.dxf.major_axis.y
+                dx1, dy1 = transformer.transform(cx + mx, cy + my)
+                dx0, dy0 = cx, cy
+                new_major_axis = (dx1 - dx0, dy1 - dy0)
+
+                entity.dxf.major_axis = new_major_axis
+
             # === 단순한 엔티티는 자동 처리 ===
             else:
                 for attr in dir(entity.dxf):
-                    if attr.startswith('__'):
+                    if attr.startswith('__') or attr in ('center', 'major_axis'):
                         continue
                     try:
                         val = getattr(entity.dxf, attr)
