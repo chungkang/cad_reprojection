@@ -21,11 +21,14 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
                 entity.dxf.center = (cx, cy)
 
             elif dxftype == "LWPOLYLINE":
-                points = [
-                    (*transformer.transform(x, y), *point[2:])
-                    for x, y, *point in entity.get_points()
-                ]
-                entity.set_points(points)
+                new_points = []
+                for point in entity.get_points():  # (x, y, [start_width, end_width, bulge, ...])
+                    x, y = point[0], point[1]
+                    transformed = transformer.transform(x, y)
+                    # 나머지 값들은 그대로 유지
+                    rest = point[2:] if len(point) > 2 else []
+                    new_points.append((*transformed, *rest))
+                entity.set_points(new_points)
 
             elif dxftype == "POLYLINE":
                 vertices = entity.vertices if isinstance(entity.vertices, list) else entity.vertices()
