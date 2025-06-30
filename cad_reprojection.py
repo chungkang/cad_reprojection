@@ -33,8 +33,10 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
             elif dxftype == "POLYLINE":
                 vertices = entity.vertices if isinstance(entity.vertices, list) else entity.vertices()
                 for vertex in vertices:
-                    x, y = transformer.transform(vertex.dxf.location.x, vertex.dxf.location.y)
-                    vertex.dxf.location = (x, y)
+                    x0, y0, z0 = vertex.dxf.location.xyz
+                    x1, y1 = transformer.transform(x0, y0)
+                    vertex.dxf.location = (x1, y1, z0)  # Z 값 유지
+
 
             elif dxftype == "HATCH":
                 for path in entity.paths:
