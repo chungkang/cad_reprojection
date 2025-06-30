@@ -95,6 +95,10 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
 
                 entity.dxf.major_axis = new_major_axis
 
+            elif dxftype == "CIRCLE":
+                cx, cy = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
+                entity.dxf.center = (cx, cy)
+
             # === 단순한 엔티티는 자동 처리 ===
             else:
                 for attr in dir(entity.dxf):
