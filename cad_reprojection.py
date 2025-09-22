@@ -2,11 +2,10 @@ import ezdxf
 from pyproj import Transformer
 import tkinter as tk
 from tkinter import filedialog, messagebox
-import math
 
 
 def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
-    """DXF 파일의 좌표계를 변환하는 함수"""
+    """DXF 파일의 좌표계를 변환하는 함수 (Z 값은 그대로 유지)"""
     try:
         transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
         doc = ezdxf.readfile(input_dxf)
@@ -18,100 +17,96 @@ def transform_dxf(input_dxf, output_dxf, input_crs, output_crs):
             # === 복잡한 엔티티 수동 처리 ===
             if dxftype == "ARC":
                 cx, cy = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
-                entity.dxf.center = (cx, cy)
+                cz = entity.dxf.center.z
+                entity.dxf.center = (cx, cy, cz)
 
             elif dxftype == "LWPOLYLINE":
                 new_points = []
                 for point in entity.get_points():  # (x, y, [start_width, end_width, bulge, ...])
                     x, y = point[0], point[1]
-                    transformed = transformer.transform(x, y)
-                    # 나머지 값들은 그대로 유지
+                    z = entity.dxf.elevation if hasattr(entity.dxf, "elevation") else 0
+                    tx, ty = transformer.transform(x, y)
                     rest = point[2:] if len(point) > 2 else []
-                    new_points.append((*transformed, *rest))
+                    new_points.append((tx, ty, *rest))
                 entity.set_points(new_points)
+                entity.dxf.elevation = z  # Z값 유지
 
             elif dxftype == "POLYLINE":
-                vertices = entity.vertices if isinstance(entity.vertices, list) else entity.vertices()
-                for vertex in vertices:
+                for vertex in entity.vertices:
                     x0, y0, z0 = vertex.dxf.location.xyz
                     x1, y1 = transformer.transform(x0, y0)
                     vertex.dxf.location = (x1, y1, z0)  # Z 값 유지
 
-
             elif dxftype == "HATCH":
                 for path in entity.paths:
                     if hasattr(path, "edges"):
-                        # EdgePath 처리
                         for edge in path.edges:
                             if isinstance(edge, ezdxf.entities.LineEdge):
                                 x1, y1 = transformer.transform(edge.start.x, edge.start.y)
                                 x2, y2 = transformer.transform(edge.end.x, edge.end.y)
-                                edge.start = (x1, y1)
-                                edge.end = (x2, y2)
+                                edge.start = (x1, y1, edge.start.z)
+                                edge.end = (x2, y2, edge.end.z)
                             elif isinstance(edge, ezdxf.entities.ArcEdge):
                                 cx, cy = transformer.transform(edge.center.x, edge.center.y)
-                                edge.center = (cx, cy)
+                                edge.center = (cx, cy, edge.center.z)
                     elif hasattr(path, "vertices"):
-                        # PolylinePath 처리
                         new_vertices = []
                         for x, y, *rest in path.vertices:
-                            x_t, y_t = transformer.transform(x, y)
-                            new_vertices.append((x_t, y_t, *rest))
+                            tx, ty = transformer.transform(x, y)
+                            z = rest[0] if rest else 0
+                            new_vertices.append((tx, ty, z, *rest[1:]))
                         path.vertices = new_vertices
 
             elif dxftype == "MTEXT":
                 if hasattr(entity.dxf, "insert"):
                     x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
-                    entity.dxf.insert = (x, y)
+                    entity.dxf.insert = (x, y, entity.dxf.insert.z)
                 if entity.dxf.hasattr("align_point"):
                     ax, ay = transformer.transform(entity.dxf.align_point.x, entity.dxf.align_point.y)
-                    entity.dxf.align_point = (ax, ay)
+                    entity.dxf.align_point = (ax, ay, entity.dxf.align_point.z)
 
             elif dxftype == "LEADER":
-                vertices = entity.vertices if isinstance(entity.vertices, list) else entity.vertices()
                 new_vertices = []
-                for vertex in vertices:
+                for vertex in entity.vertices:
                     x, y = transformer.transform(vertex[0], vertex[1])
                     if len(vertex) == 3:
                         z = vertex[2]
                         new_vertices.append((x, y, z))
                     else:
-                        new_vertices.append((x, y))
+                        new_vertices.append((x, y, 0))
                 entity.vertices = new_vertices
 
             elif dxftype == "IMAGE":
                 x, y = transformer.transform(entity.dxf.insert.x, entity.dxf.insert.y)
-                entity.dxf.insert = (x, y)
+                entity.dxf.insert = (x, y, entity.dxf.insert.z)
 
             elif dxftype == "ELLIPSE":
-                # 중심 좌표 변환
                 cx, cy = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
-                entity.dxf.center = (cx, cy)
+                cz = entity.dxf.center.z
+                entity.dxf.center = (cx, cy, cz)
 
-                # 주축 벡터 변환 (벡터는 위치가 아닌 방향 → 회전만 적용해야 하는데 실제로는 길이까지 고려됨)
-                # 단순 좌표 변환이 아닌 상대적 이동량만 적용해야 정확함
-                mx, my = entity.dxf.major_axis.x, entity.dxf.major_axis.y
+                mx, my, mz = entity.dxf.major_axis.xyz
                 dx1, dy1 = transformer.transform(cx + mx, cy + my)
                 dx0, dy0 = cx, cy
-                new_major_axis = (dx1 - dx0, dy1 - dy0)
-
+                new_major_axis = (dx1 - dx0, dy1 - dy0, mz)
                 entity.dxf.major_axis = new_major_axis
 
             elif dxftype == "CIRCLE":
                 cx, cy = transformer.transform(entity.dxf.center.x, entity.dxf.center.y)
-                entity.dxf.center = (cx, cy)
+                cz = entity.dxf.center.z
+                entity.dxf.center = (cx, cy, cz)
 
-            # === 단순한 엔티티는 자동 처리 ===
+            # === 일반 엔티티 처리 (Vec2, Vec3) ===
             else:
                 for attr in dir(entity.dxf):
                     if attr.startswith('__') or attr in ('center', 'major_axis'):
                         continue
                     try:
                         val = getattr(entity.dxf, attr)
-                        if isinstance(val, ezdxf.math.Vec2) or isinstance(val, ezdxf.math.Vec3):
+                        if isinstance(val, (ezdxf.math.Vec2, ezdxf.math.Vec3)):
                             x, y = transformer.transform(val.x, val.y)
-                            z = val.z if hasattr(val, 'z') else 0
-                            new_vec = ezdxf.math.Vec3(x, y, z) if hasattr(val, 'z') else ezdxf.math.Vec2(x, y)
+                            z = val.z if hasattr(val, "z") else 0
+                            new_vec = ezdxf.math.Vec3(x, y, z)
                             setattr(entity.dxf, attr, new_vec)
                     except Exception:
                         continue
@@ -154,7 +149,7 @@ def start_conversion():
 
 # GUI 생성
 root = tk.Tk()
-root.title("DXF 좌표 변환기")
+root.title("DXF 좌표 변환기 (Z값 보존)")
 root.geometry("500x250")
 root.resizable(False, False)
 
